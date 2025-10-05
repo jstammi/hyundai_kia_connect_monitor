@@ -624,7 +624,11 @@ MANAGER: typing.Union[VehicleManager, None] = None
 def handle_vehicles(login: bool) -> bool:
     """handle vehicles"""
     global MANAGER, MONITOR_SOMETHING_WRITTEN_OR_ERROR  # pylint:disable=global-statement  # noqa
-    retries = 15  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
+    # TODO #84: retry only on communication problems towards vehicle, not for client-side handling of data
+    # as such causes exceeding of api requests limit
+    # (besides typically not being transient and problems does not dis-appear without user intervention)
+    #retries = 14  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
+    retries = 1  # workaround: disable retries until improved error handling is implemented
     while retries > 0:
         error_string = ""
         try:
