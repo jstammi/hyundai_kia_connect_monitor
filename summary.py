@@ -462,7 +462,7 @@ if not MONITOR_CSV_FILENAME.is_file():
     sys.exit(-1)
 
 MONITOR_CSV_FILE: TextIOWrapper = MONITOR_CSV_FILENAME.open(
-    "r", encoding="windows-1252"
+    "r", encoding="utf-8"
 )
 MONITOR_CSV_FILE_EOL: bool = False
 MONITOR_CSV_READ_AHEAD_LINE: str = ""
@@ -677,7 +677,7 @@ def print_summary(
             )
 
     # get information from monitor.lastrun
-    with LASTRUN_FILENAME.open("r", encoding="windows-1252") as lastrun_file:
+    with LASTRUN_FILENAME.open("r", encoding="utf-8") as lastrun_file:
         lastrun_lines = lastrun_file.readlines()
     last_upd_dt = get_splitted_list_item(lastrun_lines, 2)[1]
     location_last_upd_dt = get_splitted_list_item(lastrun_lines, 3)[1]
@@ -1086,15 +1086,15 @@ def send_to_mqtt_domoticz() -> None:
 
 
 # always rewrite charge file, because input might be changed
-CHARGE_CSV_FILE = CHARGE_CSV_FILENAME.open("w", encoding="windows-1252")
+CHARGE_CSV_FILE = CHARGE_CSV_FILENAME.open("w", encoding="utf-8")
 write_charge_csv("date, odometer, +kWh, SOC%, 12V%, address")
 
 
 # always rewrite day and tripfile, because input might be changed
-DAY_CSV_FILE = DAY_CSV_FILENAME.open("w", encoding="windows-1252")
+DAY_CSV_FILE = DAY_CSV_FILENAME.open("w", encoding="utf-8")
 write_day_csv("date, odometer, distance, -kWh, +kWh, SOC%, 12V%, address")
 
-TRIP_CSV_FILE = TRIP_CSV_FILENAME.open("w", encoding="windows-1252")
+TRIP_CSV_FILE = TRIP_CSV_FILENAME.open("w", encoding="utf-8")
 write_trip_csv("date, odometer, distance, -kWh, +kWh, SOC%, 12V%, address")
 
 summary()  # do the work
