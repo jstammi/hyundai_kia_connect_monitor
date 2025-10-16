@@ -205,19 +205,19 @@ def get_weekday_translation(weekday_string: str) -> str:
     SUMMARY_DAY_EOF,
     SUMMARY_DAY_LAST_READ_LINE,
     SUMMARY_DAY_READ_REVERSE_ORDER,
-) = read_reverse_order_init(SUMMARY_DAY_CSV_FILE, encoding="windows-1252")
+) = read_reverse_order_init(SUMMARY_DAY_CSV_FILE, encoding="utf-8")
 
 (
     SUMMARY_TRIP_EOF,
     SUMMARY_TRIP_LAST_READ_LINE,
     SUMMARY_TRIP_READ_REVERSE_ORDER,
-) = read_reverse_order_init(SUMMARY_TRIP_CSV_FILE, encoding="windows-1252")
+) = read_reverse_order_init(SUMMARY_TRIP_CSV_FILE, encoding="utf-8")
 
 (
     SUMMARY_CHARGE_EOF,
     SUMMARY_CHARGE_LAST_READ_LINE,
     SUMMARY_CHARGE_READ_REVERSE_ORDER,
-) = read_reverse_order_init(SUMMARY_CHARGE_CSV_FILE, encoding="windows-1252")
+) = read_reverse_order_init(SUMMARY_CHARGE_CSV_FILE, encoding="utf-8")
 
 (
     TRIPINFO_EOF,
