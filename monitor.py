@@ -598,9 +598,7 @@ def run_commands():
             _ = D and dbg(f"output_filename: {output_filename}")
             _ = D and dbg(f"open_mode: {open_mode}")
             try:
-                with open(
-                    output_filename, open_mode, encoding="utf-8"
-                ) as outfile:
+                with open(output_filename, open_mode, encoding="utf-8") as outfile:
                     process = subprocess.run(
                         command,
                         check=True,
