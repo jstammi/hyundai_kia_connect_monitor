@@ -11,12 +11,16 @@ from os import path
 import re
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from collections import deque
 import typing
-from dateutil.relativedelta import relativedelta
-import gspread
+
+try:  # make gspread optional
+    import gspread
+except ImportError:
+    gspread = None
+
 from domoticz_utils import (
     SEND_TO_DOMOTICZ,
     send_dailystats_day_line_to_domoticz,
@@ -25,6 +29,7 @@ from domoticz_utils import (
 from monitor_utils import (
     dbg,
     determine_vin,
+    die,
     float_to_string_no_trailing_zero,
     get,
     get_filepath,
@@ -73,8 +78,7 @@ for kindex in range(1, len(sys.argv)):
             KEYWORD_ERROR = True
 
 if KEYWORD_ERROR or arg_has("help"):
-    logging.info("Usage: python dailystats.py [sheetupdate] [vin=VIN]")
-    exit()
+    die("Usage: python dailystats.py [sheetupdate] [vin=VIN]")
 
 SHEETUPDATE = arg_has("sheetupdate")
 OUTPUT_SPREADSHEET_NAME = "monitor.dailystats"
@@ -214,16 +218,16 @@ def get_weekday_translation(weekday_string: str) -> str:
 ) = read_reverse_order_init(SUMMARY_TRIP_CSV_FILE)
 
 (
-    TRIPINFO_EOF,
-    TRIPINFO_LAST_READ_LINE,
-    TRIPINFO_READ_REVERSE_ORDER,
-) = read_reverse_order_init(TRIPINFO_CSV_FILE)
-
-(
     SUMMARY_CHARGE_EOF,
     SUMMARY_CHARGE_LAST_READ_LINE,
     SUMMARY_CHARGE_READ_REVERSE_ORDER,
 ) = read_reverse_order_init(SUMMARY_CHARGE_CSV_FILE)
+
+(
+    TRIPINFO_EOF,
+    TRIPINFO_LAST_READ_LINE,
+    TRIPINFO_READ_REVERSE_ORDER,
+) = read_reverse_order_init(TRIPINFO_CSV_FILE)
 
 
 def reverse_read_next_summary_trip_line() -> None:
@@ -478,7 +482,7 @@ def print_tripinfo(
     else:
         trip_time_start_str = start_time[0:2] + ":" + start_time[2:4]
         trip_time_date = datetime.strptime(trip_time_start_str, "%H:%M")
-        trip_time_end = trip_time_date + relativedelta(minutes=to_int(drive_time))
+        trip_time_end = trip_time_date + timedelta(minutes=to_int(drive_time))
         trip_time_end_str = trip_time_end.strftime("-%H:%M")
         trip_time_str = trip_time_start_str + trip_time_end_str
 
@@ -916,6 +920,12 @@ def send_to_mqtt_domoticz() -> None:
 # main program
 RETRIES = -1
 if SHEETUPDATE:
+    if gspread is None:
+        die(
+            "Google spreadsheet support not available, please install gspread, e.g."
+            'pip install "gspread>=5.6.2"'
+        )
+
     RETRIES = 2
     while RETRIES > 0:
         try:

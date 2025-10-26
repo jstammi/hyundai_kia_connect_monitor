@@ -15,6 +15,7 @@ import time
 from typing import Generator
 
 from datetime import datetime, timezone
+from calendar import monthrange
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen, Request
 
@@ -44,6 +45,12 @@ def set_dbg() -> None:
     global D  # pylint:disable=global-statement
     D = True
     logging.getLogger().setLevel(logging.DEBUG)
+
+
+def die(msg: str):
+    """die with an error string"""
+    logging.error(msg)
+    sys.exit(-1)
 
 
 def get_splitted_list_item(the_list: list[str], index: int) -> list[str]:
@@ -308,6 +315,18 @@ def get_safe_datetime(date: datetime, tzinfo: timezone) -> datetime:
     return date
 
 
+def add_months(dt: datetime, months: int) -> datetime:
+    """add months to datetime"""
+    month = dt.month - 1 + months
+    year = dt.year + month // 12
+    month = month % 12 + 1
+
+    # Clamp the day to the last valid day of the target month
+    day = min(dt.day, monthrange(year, month)[1])
+
+    return dt.replace(year=year, month=month, day=day)
+
+
 def get_last_date(filename: str) -> str:
     """get last date of filename"""
     last_date = "20000101"  # millenium
@@ -338,7 +357,7 @@ def read_reverse_order(file_name: str) -> Generator[str, None, None]:
             # If the read byte is newline character then one line is read
             if new_byte == b"\n":
                 # Fetch the line from buffer and yield it
-                yield buffer.decode(encoding="utf-8")[::-1]
+                yield buffer[::-1].decode()
                 # Reinitialize the byte array to save next line
                 buffer = bytearray()
             else:
@@ -347,12 +366,10 @@ def read_reverse_order(file_name: str) -> Generator[str, None, None]:
         # If there is still data in buffer, then it is first line.
         if len(buffer) > 0:
             # Yield the first line too
-            yield buffer.decode()[::-1]
+            yield buffer[::-1].decode()
 
 
-def read_reverse_order_init(
-    path: Path,
-) -> tuple[bool, str, Generator[str, None, None]]:
+def read_reverse_order_init(path: Path) -> tuple[bool, str, Generator[str, None, None]]:
     """ "read_reverse_order_init"""
     eof = False
     last_read_line = ""

@@ -16,12 +16,17 @@ from datetime import datetime
 from pathlib import Path
 from collections import deque
 import typing
-import gspread
-from dateutil import parser
+
+try:  # make gspread optional
+    import gspread
+except ImportError:
+    gspread = None
+
 from domoticz_utils import SEND_TO_DOMOTICZ, send_summary_line_to_domoticz
 from monitor_utils import (
     dbg,
     determine_vin,
+    die,
     get_filepath,
     arg_has,
     get,
@@ -75,20 +80,19 @@ for kindex in range(1, len(sys.argv)):
             KEYWORD_ERROR = True
 
 if KEYWORD_ERROR or arg_has("help"):
-    print(
+    die(
         "Usage: python summary.py [trip] [day] [week] [month] [year] [sheetupdate] [vin=VIN]"  # noqa
     )
-    exit()
 
 
 CURRENT_DAY_STR = datetime.now().strftime("%Y-%m-%d")
 MONITOR_CSV_FILENAME = Path("monitor.csv")
 LASTRUN_FILENAME = Path("monitor.lastrun")
 OUTPUT_SPREADSHEET_NAME = "hyundai-kia-connect-monitor"
-CHARGE_CSV_FILENAME = Path("summary.charge.csv")
-TRIP_CSV_FILENAME = Path("summary.trip.csv")
-DAY_CSV_FILENAME = Path("summary.day.csv")
-CHARGE_CSV_FILE: TextIOWrapper
+SUMMARY_CHARGE_CSV_FILENAME = Path("summary.charge.csv")
+SUMMARY_TRIP_CSV_FILENAME = Path("summary.trip.csv")
+SUMMARY_DAY_CSV_FILENAME = Path("summary.day.csv")
+SUMMARY_CHARGE_CSV_FILE: TextIOWrapper
 
 LENCHECK = 1
 VIN = get_vin_arg()
@@ -96,9 +100,9 @@ if VIN != "":
     MONITOR_CSV_FILENAME = Path(f"monitor.{VIN}.csv")
     LASTRUN_FILENAME = Path(f"monitor.{VIN}.lastrun")
     OUTPUT_SPREADSHEET_NAME = f"monitor.{VIN}"
-    CHARGE_CSV_FILENAME = Path(f"summary.charge.{VIN}.csv")
-    TRIP_CSV_FILENAME = Path(f"summary.trip.{VIN}.csv")
-    DAY_CSV_FILENAME = Path(f"summary.day.{VIN}.csv")
+    SUMMARY_CHARGE_CSV_FILENAME = Path(f"summary.charge.{VIN}.csv")
+    SUMMARY_TRIP_CSV_FILENAME = Path(f"summary.trip.{VIN}.csv")
+    SUMMARY_DAY_CSV_FILENAME = Path(f"summary.day.{VIN}.csv")
     LENCHECK = 2
 _ = D and dbg(f"INPUT_CSV_FILE: {MONITOR_CSV_FILENAME.name}")
 
@@ -458,12 +462,9 @@ def get_address(split: list[str]) -> str:
 
 
 if not MONITOR_CSV_FILENAME.is_file():
-    logging.error(f"ERROR: file does not exist: {MONITOR_CSV_FILENAME}")
-    sys.exit(-1)
+    die(f"ERROR: file does not exist: {MONITOR_CSV_FILENAME}")
 
-MONITOR_CSV_FILE: TextIOWrapper = MONITOR_CSV_FILENAME.open(
-    "r", encoding="utf-8"
-)
+MONITOR_CSV_FILE: TextIOWrapper = MONITOR_CSV_FILENAME.open("r", encoding="utf-8")
 MONITOR_CSV_FILE_EOL: bool = False
 MONITOR_CSV_READ_AHEAD_LINE: str = ""
 MONITOR_CSV_READ_DONE_ONCE: bool = False
@@ -551,23 +552,23 @@ def get_corrected_next_monitor_csv_line() -> str:
 
 def write_charge_csv(line: str) -> None:
     """write charge csv"""
-    _ = D and dbg(f"{CHARGE_CSV_FILENAME}:[{line}]")
-    CHARGE_CSV_FILE.write(line)
-    CHARGE_CSV_FILE.write("\n")
+    _ = D and dbg(f"{SUMMARY_CHARGE_CSV_FILENAME}:[{line}]")
+    SUMMARY_CHARGE_CSV_FILE.write(line)
+    SUMMARY_CHARGE_CSV_FILE.write("\n")
 
 
 def write_day_csv(line: str) -> None:
     """write day csv"""
-    _ = D and dbg(f"{DAY_CSV_FILENAME}:[{line}]")
-    DAY_CSV_FILE.write(line)
-    DAY_CSV_FILE.write("\n")
+    _ = D and dbg(f"{SUMMARY_DAY_CSV_FILENAME}:[{line}]")
+    SUMMARY_DAY_CSV_FILE.write(line)
+    SUMMARY_DAY_CSV_FILE.write("\n")
 
 
 def write_trip_csv(line: str) -> None:
     """write trip csv"""
-    _ = D and dbg(f"{TRIP_CSV_FILENAME}:[{line}]")
-    TRIP_CSV_FILE.write(line)
-    TRIP_CSV_FILE.write("\n")
+    _ = D and dbg(f"{SUMMARY_TRIP_CSV_FILENAME}:[{line}]")
+    SUMMARY_TRIP_CSV_FILE.write(line)
+    SUMMARY_TRIP_CSV_FILE.write("\n")
 
 
 def show_zero_values_float(value: float) -> str:
@@ -862,8 +863,8 @@ def keep_track_of_totals(
         )
 
     # keep track of elapsed minutes
-    current_day = parser.parse(split[DT])
-    prev_day = parser.parse(prev_split[DT])
+    current_day = datetime.strptime(split[DT], "%Y-%m-%d %H:%M:%S%z")
+    prev_day = datetime.strptime(prev_split[DT], "%Y-%m-%d %H:%M:%S%z")
     elapsed_minutes = round((current_day - prev_day).total_seconds() / 60)
     t_elapsed_minutes += elapsed_minutes
 
@@ -966,7 +967,7 @@ def handle_line(
     else:
         HIGHEST_ODO = odo
 
-    current_day = parser.parse(split[DT])
+    current_day = datetime.strptime(split[DT], "%Y-%m-%d %H:%M:%S%z")
     current_day_values = init(current_day, odo, to_int(split[SOC]), to_int(split[V12]))
     t_day = totals.day
     if not t_day:
@@ -1044,7 +1045,8 @@ def summary():
         _ = D and dbg(str(MONITOR_CSV_LINECOUNT) + ": LINE=[" + line + "]")
         split = MONITOR_CSV_CURR_SPLIT
         if totals.day and not same_day(
-            parser.parse(split[DT]), parser.parse(prev_split[DT])
+            datetime.strptime(split[DT], "%Y-%m-%d %H:%M:%S%z"),
+            datetime.strptime(prev_split[DT], "%Y-%m-%d %H:%M:%S%z"),
         ):
             # handle end of day previous day
             eod_line = line[0:11] + "00:00:00" + prev_line[19:]
@@ -1086,25 +1088,31 @@ def send_to_mqtt_domoticz() -> None:
 
 
 # always rewrite charge file, because input might be changed
-CHARGE_CSV_FILE = CHARGE_CSV_FILENAME.open("w", encoding="utf-8")
+SUMMARY_CHARGE_CSV_FILE = SUMMARY_CHARGE_CSV_FILENAME.open("w", encoding="utf-8")
 write_charge_csv("date, odometer, +kWh, SOC%, 12V%, address")
 
 
 # always rewrite day and tripfile, because input might be changed
-DAY_CSV_FILE = DAY_CSV_FILENAME.open("w", encoding="utf-8")
+SUMMARY_DAY_CSV_FILE = SUMMARY_DAY_CSV_FILENAME.open("w", encoding="utf-8")
 write_day_csv("date, odometer, distance, -kWh, +kWh, SOC%, 12V%, address")
 
-TRIP_CSV_FILE = TRIP_CSV_FILENAME.open("w", encoding="utf-8")
+SUMMARY_TRIP_CSV_FILE = SUMMARY_TRIP_CSV_FILENAME.open("w", encoding="utf-8")
 write_trip_csv("date, odometer, distance, -kWh, +kWh, SOC%, 12V%, address")
 
 summary()  # do the work
 MONITOR_CSV_FILE.close()
-CHARGE_CSV_FILE.close()
-DAY_CSV_FILE.close()
-TRIP_CSV_FILE.close()
+SUMMARY_CHARGE_CSV_FILE.close()
+SUMMARY_DAY_CSV_FILE.close()
+SUMMARY_TRIP_CSV_FILE.close()
 
 RETRIES = -1
 if SHEETUPDATE:
+    if gspread is None:
+        die(
+            "Google spreadsheet support not available, please install gspread, e.g."
+            'pip install "gspread>=5.6.2"'
+        )
+
     RETRIES = 2
     while RETRIES > 0:
         try:
