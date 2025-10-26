@@ -709,7 +709,7 @@ class RequestFormatter(logging.Formatter):
 
     def formatMessage(self, record):
         result = super().formatMessage(record)
-        if record.name == 'httplogger':
+        if record.name == 'requests_logger':
             result += textwrap.dedent('''
                 ---------------- request ----------------
                 {req.method} {req.url}
