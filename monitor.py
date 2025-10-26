@@ -629,6 +629,7 @@ def handle_vehicles(login: bool) -> bool:
     #retries = 14  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
     retries = 2  # workaround: disable retries until improved error handling is implemented
     while retries > 0:
+        logging.debug(f"check vehicles: {login}/{retries}")
         error_string = ""
         try:
             if login:
