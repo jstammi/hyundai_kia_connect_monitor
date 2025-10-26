@@ -737,6 +737,7 @@ def log_request(response, *args, **kwargs):
     REQUESTS_LOGGER.info('hyundai_kia_connect_api request', extra=extra)
 
 def enable_trace_requests(monitor: VehicleManager):
+    logging.info('enabling api requests logging')
     REQUESTS_LOGGER = logging.getLogger('requests_logger')
     REQUESTS_LOGGER.setLevel(logging.INFO)
     handler = logging.FileHandler('requests.log', mode='a')
