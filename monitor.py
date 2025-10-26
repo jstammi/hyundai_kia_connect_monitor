@@ -707,8 +707,10 @@ class RequestFormatter(logging.Formatter):
         return '\n'.join(f'{k}: {v}' for k, v in d.items())
 
     def formatMessage(self, record):
+        result = super().formatMessage(record)
         if record.name == 'requests_logger':
-            result = (textwrap.dedent('''{req.method} {req.url}: {res.status_code} {res.reason}''')
+            result += (textwrap.dedent('''
+                {req.method} {req.url}: {res.status_code} {res.reason}''')
                 .format(req=record.req, res=record.res,))
             if record.req.body and not(record.req.body.isspace()):
                 result += (textwrap.dedent('''
@@ -716,10 +718,7 @@ class RequestFormatter(logging.Formatter):
                     .format(req=record.req,))
             if record.res.text and not(record.res.text.isspace()):
                 result += (textwrap.dedent('''
-                    response: {req.text}''')
-                        .format(res=record.res,))
-        else:
-            result = super().formatMessage(record)
+                    response: {res.text}''').format(res=record.res,))
 
         return result
 
