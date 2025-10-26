@@ -463,7 +463,7 @@ def handle_one_vehicle(
             f"Forced sync, new odometer=[{odometer_str}], old_odometer=[{list_prev_line[5].strip()}]"  # noqa
         )
         logging.info(f"org={vehicle.geocode}")  # noqa
-        MANAGER.check_and_force_update_vehicles(0)  # forced sync
+        MANAGER.force_refresh_all_vehicles_states()  # forced sync - always, not only starting with the 2nd one
         MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
         vehicle = MANAGER.vehicles[vehicle_id]
         logging.info(f"upd={vehicle.geocode}")  # noqa
