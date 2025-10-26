@@ -710,15 +710,16 @@ class RequestFormatter(logging.Formatter):
         result = super().formatMessage(record)
         if record.name == 'requests_logger':
             result += (textwrap.dedent('''
-                {req.method} {req.url}: {res.status_code} {res.reason}''')
+                \t{req.method} {req.url}: {res.status_code} {res.reason}''')
                 .format(req=record.req, res=record.res,))
             if record.req.body and not(record.req.body.isspace()):
                 result += (textwrap.dedent('''
-                    data: {req.body}''')
+                    \tdata: {req.body}''')
                     .format(req=record.req,))
             if record.res.text and not(record.res.text.isspace()):
                 result += (textwrap.dedent('''
-                    response: {res.text}''').format(res=record.res,))
+                    \tresponse: {res.text}''').format(res=record.res,))
+            result += '\n-----'
 
         return result
 
