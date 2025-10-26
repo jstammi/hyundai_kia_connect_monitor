@@ -40,6 +40,8 @@ import configparser
 import traceback
 import logging
 import logging.config
+import textwrap
+import requests
 from pathlib import Path
 from datetime import datetime, timedelta
 import typing
@@ -146,6 +148,7 @@ MONITOR_FORCE_SYNC_MAX_COUNT = to_int(
     )
 )
 MONITOR_FORCE_SYNC_COUNT = 0
+MONITOR_TRACE_REQUESTS = get_bool(monitor_settings, "monitor_trace_requests", False)
 
 
 MONITOR_SOMETHING_WRITTEN_OR_ERROR = False
@@ -628,7 +631,7 @@ def handle_vehicles(login: bool) -> bool:
     # as such causes exceeding of api requests limit
     # (besides typically not being transient and problems does not dis-appear without user intervention)
     #retries = 14  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
-    retries = 1  # workaround: disable retries until improved error handling is implemented
+    retries = 2  # workaround: disable retries until improved error handling is implemented
     while retries > 0:
         error_string = ""
         try:
@@ -649,6 +652,9 @@ def handle_vehicles(login: bool) -> bool:
                 )
 
             if MANAGER:
+                if MONITOR_TRACE_REQUESTS:
+                    enable_trace_requests(MANAGER)
+
                 MANAGER.check_and_refresh_token()
                 MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
                 error = False
@@ -699,6 +705,50 @@ def handle_vehicles(login: bool) -> bool:
             (retries, error_string) = handle_exception(ex, retries, True)
 
     return error
+
+
+class RequestFormatter(logging.Formatter):
+    def _formatHeaders(self, d):
+        return '\n'.join(f'{k}: {v}' for k, v in d.items())
+
+    def formatMessage(self, record):
+        result = super().formatMessage(record)
+        if record.name == 'httplogger':
+            result += textwrap.dedent('''
+                ---------------- request ----------------
+                {req.method} {req.url}
+                {reqhdrs}
+
+                {req.body}
+                ---------------- response ----------------
+                {res.status_code} {res.reason} {res.url}
+                {reshdrs}
+
+                {res.text}
+            ''').format(
+                req=record.req,
+                res=record.res,
+                reqhdrs=self._formatHeaders(record.req.headers),
+                reshdrs=self._formatHeaders(record.res.headers),
+            )
+
+        return result
+
+
+REQUESTS_LOGGER = None
+def log_request(response, *args, **kwargs):
+    extra = {'req': response.request, 'res': response}
+    REQUESTS_LOGGER.info('hyundai_kia_connect_api request', extra=extra)
+
+def enable_trace_requests(monitor: VehicleManager):
+    REQUESTS_LOGGER = logging.getLogger('requests_logger')
+    REQUESTS_LOGGER.setLevel(logging.INFO)
+    handler = logging.FileHandler('requests.log', mode='a')
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
+    REQUESTS_LOGGER.addHandler(handler)
+    session : requests.Session = monitor.api.session
+    session.hooks['response'].append(log_request)
 
 
 def monitor():
