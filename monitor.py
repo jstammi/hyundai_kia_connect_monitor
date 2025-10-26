@@ -733,10 +733,12 @@ class RequestFormatter(logging.Formatter):
 
 REQUESTS_LOGGER = None
 def log_request(response, *args, **kwargs):
+    global REQUESTS_LOGGER
     extra = {'req': response.request, 'res': response}
     REQUESTS_LOGGER.info('hyundai_kia_connect_api request', extra=extra)
 
 def enable_trace_requests(monitor: VehicleManager):
+    global REQUESTS_LOGGER
     logging.info('enabling api requests logging')
     REQUESTS_LOGGER = logging.getLogger('requests_logger')
     REQUESTS_LOGGER.setLevel(logging.INFO)
