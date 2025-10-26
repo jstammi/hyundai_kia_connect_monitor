@@ -729,7 +729,7 @@ REQUESTS_LOGGER = None
 def log_request(response, *args, **kwargs):
     global REQUESTS_LOGGER
     extra = {'req': response.request, 'res': response}
-    REQUESTS_LOGGER.debug('hyundai_kia_connect_api request', extra=extra)
+    REQUESTS_LOGGER.debug('hyundai_kia_connect_api request', extra=extra, propagate=False)
 
 def enable_trace_requests(monitor: VehicleManager):
     global REQUESTS_LOGGER
