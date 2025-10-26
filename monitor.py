@@ -733,17 +733,16 @@ def log_request(response, *args, **kwargs):
 
 def enable_trace_requests(monitor: VehicleManager):
     global REQUESTS_LOGGER
-    if not REQUESTS_LOGGER:
-        logging.info('enabling api requests logging')
-        REQUESTS_LOGGER = logging.getLogger('requests_logger')
-        REQUESTS_LOGGER.setLevel(logging.DEBUG)
-        REQUESTS_LOGGER.propagate = False
-        handler = logging.FileHandler('requests.log', mode='a')
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
-        REQUESTS_LOGGER.addHandler(handler)
-        session : requests.Session = monitor.api.session
-        session.hooks['response'].append(log_request)
+    logging.info('enabling api requests logging')
+    REQUESTS_LOGGER = logging.getLogger('requests_logger')
+    REQUESTS_LOGGER.setLevel(logging.DEBUG)
+    REQUESTS_LOGGER.propagate = False
+    handler = logging.FileHandler('requests.log', mode='a')
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
+    REQUESTS_LOGGER.addHandler(handler)
+    session : requests.Session = monitor.api.session
+    session.hooks['response'].append(log_request)
 
 
 def monitor():
