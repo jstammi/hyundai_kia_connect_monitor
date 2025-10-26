@@ -729,7 +729,7 @@ REQUESTS_LOGGER = None
 def log_request(response, *args, **kwargs):
     global REQUESTS_LOGGER
     extra = {'req': response.request, 'res': response}
-    REQUESTS_LOGGER.debug('hyundai_kia_connect_api request', extra=extra, propagate=False)
+    REQUESTS_LOGGER.debug('hyundai_kia_connect_api request', extra=extra)
 
 def enable_trace_requests(monitor: VehicleManager):
     global REQUESTS_LOGGER
@@ -737,6 +737,7 @@ def enable_trace_requests(monitor: VehicleManager):
         logging.info('enabling api requests logging')
         REQUESTS_LOGGER = logging.getLogger('requests_logger')
         REQUESTS_LOGGER.setLevel(logging.DEBUG)
+        REQUESTS_LOGGER.propagate = False
         handler = logging.FileHandler('requests.log', mode='a')
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
