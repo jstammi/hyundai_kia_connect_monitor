@@ -749,8 +749,8 @@ def enable_trace_requests(monitor: VehicleManager):
         handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
         REQUESTS_LOGGER.addHandler(handler)
     session : requests.Session = monitor.api.session
+    session.hooks['response'].remove(log_request)
     session.hooks['response'].append(log_request)
-    session.hooks = list(dict.fromkeys(session.hooks['response'])) # remove any doubled entries
 
 def disable_trace_requests(monitor: VehicleManager):
     global REQUESTS_LOGGER
