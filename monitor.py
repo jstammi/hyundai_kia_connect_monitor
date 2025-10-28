@@ -148,6 +148,8 @@ MONITOR_FORCE_SYNC_MAX_COUNT = to_int(
 MONITOR_FORCE_SYNC_COUNT = 0
 MONITOR_TRACE_REQUESTS = get_bool(monitor_settings, "monitor_trace_requests", False)
 
+DATA_DIR = get(monitor_settings["data_dir"], default='.')
+
 
 MONITOR_SOMETHING_WRITTEN_OR_ERROR = False
 
@@ -740,7 +742,9 @@ def enable_trace_requests(monitor: VehicleManager):
         REQUESTS_LOGGER = logging.getLogger('requests_logger')
         REQUESTS_LOGGER.setLevel(logging.DEBUG)
         REQUESTS_LOGGER.propagate = False
-        handler = logging.FileHandler('requests-' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log', mode='a')
+        handler = logging.FileHandler(
+            path.join(DATA_DIR, 'requests-' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'),
+            mode='a')
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
         REQUESTS_LOGGER.addHandler(handler)
