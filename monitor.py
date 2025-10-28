@@ -633,6 +633,8 @@ def handle_vehicles(login: bool) -> bool:
         error_string = ""
         try:
             if login:
+                if MANAGER:
+                    disable_trace_requests(MANAGER)
                 logging.info("Login using VehicleManager")
                 # get information and add to comma separated file
                 MANAGER = VehicleManager(
@@ -725,7 +727,7 @@ class RequestFormatter(logging.Formatter):
         return result
 
 
-REQUESTS_LOGGER = None
+REQUESTS_LOGGER : logging.Logger = None
 def log_request(response, *args, **kwargs):
     global REQUESTS_LOGGER
     extra = {'req': response.request, 'res': response}
@@ -734,15 +736,28 @@ def log_request(response, *args, **kwargs):
 def enable_trace_requests(monitor: VehicleManager):
     global REQUESTS_LOGGER
     logging.info('enabling api requests logging')
-    REQUESTS_LOGGER = logging.getLogger('requests_logger')
-    REQUESTS_LOGGER.setLevel(logging.DEBUG)
-    REQUESTS_LOGGER.propagate = False
-    handler = logging.FileHandler('requests.log', mode='a')
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
-    REQUESTS_LOGGER.addHandler(handler)
+    if not REQUESTS_LOGGER:
+        REQUESTS_LOGGER = logging.getLogger('requests_logger')
+        REQUESTS_LOGGER.setLevel(logging.DEBUG)
+        REQUESTS_LOGGER.propagate = False
+        handler = logging.FileHandler('requests-' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log', mode='a')
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
+        REQUESTS_LOGGER.addHandler(handler)
     session : requests.Session = monitor.api.session
     session.hooks['response'].append(log_request)
+    session.hooks = list(dict.fromkeys(session.hooks['response'])) # remove any doubled entries
+
+def disable_trace_requests(monitor: VehicleManager):
+    global REQUESTS_LOGGER
+    logging.info('disabling api requests logging')
+    if REQUESTS_LOGGER:
+        session : requests.Session = monitor.api.session
+        session.hooks['response'].remove(log_request)
+        for hdl in REQUESTS_LOGGER.handlers:
+            REQUESTS_LOGGER.removeHandler(hdl)
+            hdl.close()
+        REQUESTS_LOGGER = None
 
 
 def monitor():
