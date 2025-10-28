@@ -148,7 +148,7 @@ MONITOR_FORCE_SYNC_MAX_COUNT = to_int(
 MONITOR_FORCE_SYNC_COUNT = 0
 MONITOR_TRACE_REQUESTS = get_bool(monitor_settings, "monitor_trace_requests", False)
 
-DATA_DIR = get(monitor_settings["data_dir"], default='.')
+DATA_DIR = get(monitor_settings, "data_dir", default='.')
 
 
 MONITOR_SOMETHING_WRITTEN_OR_ERROR = False
