@@ -190,6 +190,7 @@ def handle_daily_stats(vehicle: Vehicle, number_of_vehicles: int) -> None:
     filename = "monitor.dailystats.csv"
     if number_of_vehicles > 1:
         filename = "monitor.dailystats." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     dailystats_file = Path(filename)
     write_header = False
     # create header if file does not exists
@@ -278,6 +279,7 @@ def write_last_run(
     vin = vehicle.VIN
     if number_of_vehicles > 1:
         filename = "monitor." + vin + ".lastrun"
+    filename = path.join(DATA_DIR, filename)
     lastrun_file = Path(filename)
     with lastrun_file.open("w", encoding="utf-8") as file:
         now_string = datetime.now().strftime("%Y-%m-%d %H:%M %a")
@@ -299,6 +301,7 @@ def append_error_to_last_run(error_string: str) -> None:
     filename = "monitor.lastrun"
     if MANAGER and MANAGER.vehicles and len(MANAGER.vehicles) > 1:
         filename = "monitor." + MANAGER.vehicles[0].VIN + ".lastrun"
+    filename = path.join(DATA_DIR, filename)
     lastrun_file = Path(filename)
     with lastrun_file.open("a", encoding="utf-8") as file:
         file.write(f"{error_string}\n")
@@ -368,6 +371,7 @@ def handle_trip_info(
     filename = "monitor.tripinfo.csv"
     if number_of_vehicles > 1:
         filename = "monitor.tripinfo." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     write_header = False  # create header if file does not exists
     monitor_tripinfo_csv_file = Path(filename)
     if not monitor_tripinfo_csv_file.is_file():
@@ -438,6 +442,7 @@ def handle_one_vehicle(
     filename = "monitor.csv"
     if number_of_vehicles > 1:
         filename = "monitor." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     prev_line = get_last_line(Path(filename)).strip()
     list_prev_line = prev_line.split(",")
 
@@ -588,7 +593,7 @@ def run_commands():
         command = command.strip()
         if len(command) > 0:
             _ = D and dbg(f"full command: {command}")
-            output_filename = f"command{count}.log"
+            output_filename = path.join(DATA_DIR, f"command{count}.log")
             open_mode = "w"
             if ">>" in command:  # append to file
                 open_mode = "a"
@@ -638,7 +643,7 @@ def handle_vehicles(login: bool) -> bool:
     #retries = 14  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
     retries = 2  # workaround: disable retries until improved error handling is implemented
     while retries > 0:
-        logging.debug(f"check vehicles: {login}/{retries}")
+        logging.info(f"check vehicles (login={login}, retries={retries})")
         error_string = ""
         try:
             if login:
