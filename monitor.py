@@ -40,14 +40,17 @@ import configparser
 import traceback
 import logging
 import logging.config
+import textwrap
+import requests
 from pathlib import Path
 from datetime import datetime, timedelta
 import typing
-from dateutil.relativedelta import relativedelta
 from hyundai_kia_connect_api import VehicleManager, Vehicle, exceptions
 from monitor_utils import (
+    add_months,
     arg_has,
     dbg,
+    die,
     float_to_string_no_trailing_zero,
     get,
     get_bool,
@@ -92,8 +95,7 @@ for kindex in range(1, len(sys.argv)):
         KEYWORD_ERROR = True
 
 if KEYWORD_ERROR or arg_has("help"):
-    print("Usage: python monitor.py")
-    sys.exit(-1)
+    die("Usage: python monitor.py")
 
 TEST = arg_has("test")
 # == read monitor in monitor.cfg ===========================
@@ -112,16 +114,14 @@ GEOCODE_PROVIDER = to_int(
     get(monitor_settings, "geocode_provider", "1")
 )  # 1=OPENSTREETMAP 2=GOOGLE
 if GEOCODE_PROVIDER < 1 or GEOCODE_PROVIDER > 2:
-    logging.error("Invalid GEOCODE_PROVIDER in monitor.cfg, expected 1 or 2")
-    sys.exit(-1)
+    die("Invalid GEOCODE_PROVIDER in monitor.cfg, expected 1 or 2")
 
 GOOGLE_API_KEY = get(monitor_settings, "google_api_key", "")
 if len(GOOGLE_API_KEY) == 0:
     GOOGLE_API_KEY = None  # default no API key needed for OPENSTREETMAP
 
 if GEOCODE_PROVIDER == 2 and GOOGLE_API_KEY is None:
-    logging.error("Missing GOOGLE_API_KEY in monitor.cfg")
-    sys.exit(-1)
+    die("Missing GOOGLE_API_KEY in monitor.cfg")
 
 LANGUAGE = monitor_settings["language"]
 ODO_METRIC = get(monitor_settings, "odometer_metric", "km").lower()
@@ -146,6 +146,9 @@ MONITOR_FORCE_SYNC_MAX_COUNT = to_int(
     )
 )
 MONITOR_FORCE_SYNC_COUNT = 0
+MONITOR_TRACE_REQUESTS = get_bool(monitor_settings, "monitor_trace_requests", False)
+
+DATA_DIR = get(monitor_settings, "data_dir", default='.')
 
 
 MONITOR_SOMETHING_WRITTEN_OR_ERROR = False
@@ -187,6 +190,7 @@ def handle_daily_stats(vehicle: Vehicle, number_of_vehicles: int) -> None:
     filename = "monitor.dailystats.csv"
     if number_of_vehicles > 1:
         filename = "monitor.dailystats." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     dailystats_file = Path(filename)
     write_header = False
     # create header if file does not exists
@@ -275,6 +279,7 @@ def write_last_run(
     vin = vehicle.VIN
     if number_of_vehicles > 1:
         filename = "monitor." + vin + ".lastrun"
+    filename = path.join(DATA_DIR, filename)
     lastrun_file = Path(filename)
     with lastrun_file.open("w", encoding="utf-8") as file:
         now_string = datetime.now().strftime("%Y-%m-%d %H:%M %a")
@@ -296,6 +301,7 @@ def append_error_to_last_run(error_string: str) -> None:
     filename = "monitor.lastrun"
     if MANAGER and MANAGER.vehicles and len(MANAGER.vehicles) > 1:
         filename = "monitor." + MANAGER.vehicles[0].VIN + ".lastrun"
+    filename = path.join(DATA_DIR, filename)
     lastrun_file = Path(filename)
     with lastrun_file.open("a", encoding="utf-8") as file:
         file.write(f"{error_string}\n")
@@ -365,6 +371,7 @@ def handle_trip_info(
     filename = "monitor.tripinfo.csv"
     if number_of_vehicles > 1:
         filename = "monitor.tripinfo." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     write_header = False  # create header if file does not exists
     monitor_tripinfo_csv_file = Path(filename)
     if not monitor_tripinfo_csv_file.is_file():
@@ -385,14 +392,14 @@ def handle_trip_info(
             # only last 4 months can be retrieved
             # only fill when header is written
             # because for each day with trips an API call will be made
-            from_month = now - relativedelta(months=3)
+            from_month = add_months(now, -3)
         else:
             if now.day == 1:  # first day of month also retrieve previous month
-                from_month = now - relativedelta(months=1)
+                from_month = add_months(now, -1)
 
         while from_month <= now:
             yyyymm = from_month.strftime("%Y%m")
-            from_month = from_month + relativedelta(months=1)
+            from_month = add_months(from_month, 1)
             _ = D and dbg(f"update_month_trip_info: {yyyymm}")
             manager.update_month_trip_info(vehicle.id, yyyymm)
             month_trip_info = vehicle.month_trip_info
@@ -435,6 +442,7 @@ def handle_one_vehicle(
     filename = "monitor.csv"
     if number_of_vehicles > 1:
         filename = "monitor." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     prev_line = get_last_line(Path(filename)).strip()
     list_prev_line = prev_line.split(",")
 
@@ -462,7 +470,7 @@ def handle_one_vehicle(
             f"Forced sync, new odometer=[{odometer_str}], old_odometer=[{list_prev_line[5].strip()}]"  # noqa
         )
         logging.info(f"org={vehicle.geocode}")  # noqa
-        MANAGER.check_and_force_update_vehicles(0)  # forced sync
+        MANAGER.force_refresh_all_vehicles_states()  # forced sync always
         MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
         vehicle = MANAGER.vehicles[vehicle_id]
         logging.info(f"upd={vehicle.geocode}")  # noqa
@@ -585,7 +593,7 @@ def run_commands():
         command = command.strip()
         if len(command) > 0:
             _ = D and dbg(f"full command: {command}")
-            output_filename = f"command{count}.log"
+            output_filename = path.join(DATA_DIR, f"command{count}.log")
             open_mode = "w"
             if ">>" in command:  # append to file
                 open_mode = "a"
@@ -597,6 +605,7 @@ def run_commands():
             _ = D and dbg(f"command: {command}")
             _ = D and dbg(f"output_filename: {output_filename}")
             _ = D and dbg(f"open_mode: {open_mode}")
+            returncode = 0
             try:
                 with open(output_filename, open_mode, encoding="utf-8") as outfile:
                     process = subprocess.run(
@@ -606,13 +615,19 @@ def run_commands():
                         stderr=subprocess.STDOUT,
                         stdout=outfile,
                     )
-                if process.returncode != 0:
+                returncode = process.returncode
+                if returncode != 0:
                     logging.error(
-                        f"Error in running {command}: returncode {process.returncode}"
+                        f"Error in running {command}: returncode {returncode}"
                     )
+
             except Exception as ex:  # pylint: disable=broad-except
+                returncode = 112
                 (_, error_string) = handle_exception(ex, 1, True)
                 logging.error(f"Error in running {command}: {error_string}")
+
+            if returncode == 112:
+                die("Unexpected end of subprocess")
 
 
 # get MANAGER only once
@@ -626,11 +641,14 @@ def handle_vehicles(login: bool) -> bool:
     # as such causes exceeding of api requests limit
     # (besides typically not being transient and problems does not dis-appear without user intervention)
     #retries = 14  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
-    retries = 1  # workaround: disable retries until improved error handling is implemented
+    retries = 2  # workaround: disable retries until improved error handling is implemented
     while retries > 0:
+        logging.info(f"check vehicles (login={login}, retries={retries})")
         error_string = ""
         try:
             if login:
+                if MANAGER:
+                    disable_trace_requests(MANAGER)
                 logging.info("Login using VehicleManager")
                 # get information and add to comma separated file
                 MANAGER = VehicleManager(
@@ -645,6 +663,8 @@ def handle_vehicles(login: bool) -> bool:
                     geocode_api_key=GOOGLE_API_KEY,
                     language=LANGUAGE,
                 )
+                if MANAGER and MONITOR_TRACE_REQUESTS:
+                    enable_trace_requests(MANAGER)
 
             if MANAGER:
                 MANAGER.check_and_refresh_token()
@@ -656,7 +676,13 @@ def handle_vehicles(login: bool) -> bool:
                         set_vin("KMHKR81CPNU012345")
                     else:
                         set_vin(vehicle.VIN)
-                    error = handle_one_vehicle(MANAGER, vehicle_id, number_of_vehicles)
+                    try:
+                        error = handle_one_vehicle(
+                            MANAGER, vehicle_id, number_of_vehicles
+                        )
+                    except Exception as ex_one_vehicle:  # pylint: disable=broad-except
+                        logging.error(f"handle_one_vehicle exception: {ex_one_vehicle}")
+                        error = True
                     if error:  # something gone wrong, exit vehicles loop
                         error_string = "Error occurred in handle_one_vehicle()"
                         break
@@ -699,6 +725,62 @@ def handle_vehicles(login: bool) -> bool:
     return error
 
 
+class RequestFormatter(logging.Formatter):
+    def _formatHeaders(self, d):
+        return '\n'.join(f'{k}: {v}' for k, v in d.items())
+
+    def formatMessage(self, record):
+        result = super().formatMessage(record)
+        if record.name == 'requests_logger':
+            result += (textwrap.dedent('''
+                \t{req.method} {req.url}: {res.status_code} {res.reason}''')
+                .format(req=record.req, res=record.res,))
+            if record.req.body and not(record.req.body.isspace()):
+                result += (textwrap.dedent('''
+                    \tdata: {req.body}''')
+                    .format(req=record.req,))
+            if record.res.text and not(record.res.text.isspace()):
+                result += (textwrap.dedent('''
+                    \tresponse: {res.text}''').format(res=record.res,))
+            result += '\n-----'
+
+        return result
+
+
+REQUESTS_LOGGER : logging.Logger = None
+def log_request(response, *args, **kwargs):
+    global REQUESTS_LOGGER
+    extra = {'req': response.request, 'res': response}
+    REQUESTS_LOGGER.debug('hyundai_kia_connect_api request', extra=extra)
+
+def enable_trace_requests(monitor: VehicleManager):
+    global REQUESTS_LOGGER
+    logging.info('enabling api requests logging')
+    if not REQUESTS_LOGGER:
+        REQUESTS_LOGGER = logging.getLogger('requests_logger')
+        REQUESTS_LOGGER.setLevel(logging.DEBUG)
+        REQUESTS_LOGGER.propagate = False
+        handler = logging.FileHandler(
+            path.join(DATA_DIR, 'requests-' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'),
+            mode='a')
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
+        REQUESTS_LOGGER.addHandler(handler)
+    session : requests.Session = monitor.api.session
+    session.hooks['response'].append(log_request)
+
+def disable_trace_requests(monitor: VehicleManager):
+    global REQUESTS_LOGGER
+    logging.info('disabling api requests logging')
+    if REQUESTS_LOGGER:
+        session : requests.Session = monitor.api.session
+        session.hooks['response'].remove(log_request)
+        for hdl in REQUESTS_LOGGER.handlers:
+            REQUESTS_LOGGER.removeHandler(hdl)
+            hdl.close()
+        REQUESTS_LOGGER = None
+
+
 def monitor():
     """monitor"""
     global MONITOR_SOMETHING_WRITTEN_OR_ERROR, MONITOR_FORCE_SYNC_COUNT  # pylint:disable=global-statement  # noqa
@@ -716,6 +798,8 @@ def monitor():
         if error:
             logging.error(f"error count: {error_count}")
             error_count += 1
+            logging.info("Sleeping a minute")
+            sleep_seconds(60)
         else:
             error_count = 1
         if (len(MONITOR_EXECUTE_COMMANDS_WHEN_SOMETHING_WRITTEN_OR_ERROR) > 0) and (
@@ -742,8 +826,7 @@ def monitor():
                 sleep_seconds(total_seconds)
 
         if error_count > 96:  # more than 24 hours subsequnt errors
-            logging.error("Too many subsequent errors occurred, exiting monitor.py")
-            sys.exit(-1)
+            die("Too many subsequent errors occurred, exiting monitor.py")
 
     stop_mqtt()
     sys.exit(0)
