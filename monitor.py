@@ -458,16 +458,20 @@ def handle_one_vehicle(
     # workaround for location is not updated anymore since may 2025
     # force sync when odometer is different when configured
     odometer_str = get_odometer_str(vehicle)
+    location_longitude = get_safe_float(vehicle.location_longitude)
+    location_latitude = get_safe_float(vehicle.location_latitude)
     if (
         MONITOR_INFINITE
         and MONITOR_FORCE_SYNC_WHEN_ODOMETER_DIFFERENT_LOCATION_WORKAROUND
         and MONITOR_FORCE_SYNC_COUNT < MONITOR_FORCE_SYNC_MAX_COUNT
         and len(list_prev_line) == 11
         and odometer_str != list_prev_line[5].strip()
+        and f"{location_longitude}" == list_prev_line[1].strip()
+        and f"{location_latitude}" == list_prev_line[2].strip()
     ):  # odometer different
         MONITOR_FORCE_SYNC_COUNT += 1
         logging.info(
-            f"Forced sync, new odometer=[{odometer_str}], old_odometer=[{list_prev_line[5].strip()}]"  # noqa
+            f"Forced sync, new odometer=[{odometer_str}], old_odometer=[{list_prev_line[5].strip()}], unchanged location [{location_latitude}, {location_longitude}]"  # noqa
         )
         logging.info(f"org={vehicle.geocode}")  # noqa
         MANAGER.force_refresh_all_vehicles_states()  # forced sync always
