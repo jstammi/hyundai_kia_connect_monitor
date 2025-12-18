@@ -450,27 +450,47 @@ def handle_one_vehicle(
     odometer_str = get_odometer_str(vehicle)
     location_longitude = get_safe_float(vehicle.location_longitude)
     location_latitude = get_safe_float(vehicle.location_latitude)
+
     if (
-        MONITOR_INFINITE
-        and MONITOR_FORCE_SYNC_WHEN_ODOMETER_DIFFERENT_LOCATION_WORKAROUND
-        and MONITOR_FORCE_SYNC_COUNT < MONITOR_FORCE_SYNC_MAX_COUNT
-        and len(list_prev_line) == 11
-        and odometer_str != list_prev_line[5].strip()
-        and f"{location_longitude}" == list_prev_line[1].strip()
-        and f"{location_latitude}" == list_prev_line[2].strip()
-    ):  # odometer different
-        MONITOR_FORCE_SYNC_COUNT += 1
-        logging.info(
-            f"Forced sync, new odometer=[{odometer_str}], old_odometer=[{list_prev_line[5].strip()}], unchanged location [{location_latitude}, {location_longitude}]"  # noqa
-        )
-        logging.info(f"org={vehicle.geocode}")  # noqa
-        MANAGER.force_refresh_all_vehicles_states()  # forced sync always
-        MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
-        vehicle = MANAGER.vehicles[vehicle_id]
-        logging.info(f"upd={vehicle.geocode}")  # noqa
-        _ = D and dbg(f"prev={prev_line}")
-        # newest odometer, keep last_updated_at, because force sync changes the latter
-        odometer_str = get_odometer_str(vehicle)
+          MONITOR_INFINITE
+          and MONITOR_FORCE_SYNC_WHEN_ODOMETER_DIFFERENT_LOCATION_WORKAROUND
+          and MONITOR_FORCE_SYNC_COUNT < MONITOR_FORCE_SYNC_MAX_COUNT
+          and len(list_prev_line) == 11
+    ):
+        if (
+            odometer_str != list_prev_line[5].strip()
+            and f"{location_longitude}" == list_prev_line[1].strip()
+            and f"{location_latitude}" == list_prev_line[2].strip()
+        ):
+            MONITOR_FORCE_SYNC_COUNT += 1
+            logging.info(
+                f"Forced sync, new odometer=[{odometer_str}], old odometer=[{list_prev_line[5].strip()}], unchanged location=[{location_latitude}, {location_longitude}]"  # noqa
+            )
+            logging.info(f"org={vehicle.geocode}")  # noqa
+            MANAGER.force_refresh_all_vehicles_states()  # forced sync always
+            MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
+            vehicle = MANAGER.vehicles[vehicle_id]
+            logging.info(f"upd={vehicle.geocode}")  # noqa
+            _ = D and dbg(f"prev={prev_line}")
+            # newest odometer, keep last_updated_at, because force sync changes the latter
+            odometer_str = get_odometer_str(vehicle)
+        elif (
+              odometer_str == list_prev_line[5].strip()
+              and (f"{location_longitude}" != list_prev_line[1].strip()
+                   or f"{location_latitude}" != list_prev_line[2].strip())
+        ):
+            MONITOR_FORCE_SYNC_COUNT += 1
+            logging.info(
+                f"Forced sync, unchanged odometer=[{odometer_str}], new location=[{location_latitude}, {location_longitude}], old location=[{list_prev_line[2].strip()}, {list_prev_line[1].strip()}]"  # noqa
+            )
+            logging.info(f"org={vehicle.geocode}")  # noqa
+            MANAGER.force_refresh_all_vehicles_states()  # forced sync always
+            MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
+            vehicle = MANAGER.vehicles[vehicle_id]
+            logging.info(f"upd={vehicle.geocode}")  # noqa
+            _ = D and dbg(f"prev={prev_line}")
+            # newest odometer, keep last_updated_at, because force sync changes the latter
+            odometer_str = get_odometer_str(vehicle)
 
     geocode = ""
     if USE_GEOCODE:
