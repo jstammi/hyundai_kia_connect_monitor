@@ -693,7 +693,7 @@ def handle_vehicles(login: bool) -> bool:
                     enable_trace_requests(MANAGER)
 
             if MANAGER:
-                if MANAGER.check_and_refresh_token():
+                if (MANAGER.check_and_refresh_token() or login):
                     monitor_utils.sleep_seconds(60)
                 MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
                 error = False
