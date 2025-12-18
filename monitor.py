@@ -44,6 +44,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import typing
 from hyundai_kia_connect_api import VehicleManager, Vehicle, exceptions
+
+import monitor_utils
 from monitor_utils import (
     add_months,
     arg_has,
@@ -672,7 +674,8 @@ def handle_vehicles(login: bool) -> bool:
                 )
 
             if MANAGER:
-                MANAGER.check_and_refresh_token()
+                if MANAGER.check_and_refresh_token():
+                    monitor_utils.sleep_seconds(60)
                 MANAGER.update_all_vehicles_with_cached_state()  # needed >= 2.0.0
                 error = False
                 number_of_vehicles = len(MANAGER.vehicles)
