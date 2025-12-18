@@ -40,6 +40,8 @@ import configparser
 import traceback
 import logging
 import logging.config
+import textwrap
+import requests
 from pathlib import Path
 from datetime import datetime, timedelta
 import typing
@@ -146,6 +148,9 @@ MONITOR_FORCE_SYNC_MAX_COUNT = to_int(
     )
 )
 MONITOR_FORCE_SYNC_COUNT = 0
+MONITOR_TRACE_REQUESTS = get_bool(monitor_settings, "monitor_trace_requests", False)
+
+DATA_DIR = get(monitor_settings, "data_dir", default='.')
 
 
 MONITOR_SOMETHING_WRITTEN_OR_ERROR = False
@@ -187,6 +192,7 @@ def handle_daily_stats(vehicle: Vehicle, number_of_vehicles: int) -> None:
     filename = "monitor.dailystats.csv"
     if number_of_vehicles > 1:
         filename = "monitor.dailystats." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     dailystats_file = Path(filename)
     write_header = False
     # create header if file does not exists
@@ -275,6 +281,7 @@ def write_last_run(
     vin = vehicle.VIN
     if number_of_vehicles > 1:
         filename = "monitor." + vin + ".lastrun"
+    filename = path.join(DATA_DIR, filename)
     lastrun_file = Path(filename)
     with lastrun_file.open("w", encoding="utf-8") as file:
         now_string = datetime.now().strftime("%Y-%m-%d %H:%M %a")
@@ -296,6 +303,7 @@ def append_error_to_last_run(error_string: str) -> None:
     filename = "monitor.lastrun"
     if MANAGER and MANAGER.vehicles and len(MANAGER.vehicles) > 1:
         filename = "monitor." + MANAGER.vehicles[0].VIN + ".lastrun"
+    filename = path.join(DATA_DIR, filename)
     lastrun_file = Path(filename)
     with lastrun_file.open("a", encoding="utf-8") as file:
         file.write(f"{error_string}\n")
@@ -365,6 +373,7 @@ def handle_trip_info(
     filename = "monitor.tripinfo.csv"
     if number_of_vehicles > 1:
         filename = "monitor.tripinfo." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     write_header = False  # create header if file does not exists
     monitor_tripinfo_csv_file = Path(filename)
     if not monitor_tripinfo_csv_file.is_file():
@@ -435,6 +444,7 @@ def handle_one_vehicle(
     filename = "monitor.csv"
     if number_of_vehicles > 1:
         filename = "monitor." + vehicle.VIN + ".csv"
+    filename = path.join(DATA_DIR, filename)
     prev_line = get_last_line(Path(filename)).strip()
     list_prev_line = prev_line.split(",")
 
@@ -609,7 +619,7 @@ def run_commands():
         command = command.strip()
         if len(command) > 0:
             _ = D and dbg(f"full command: {command}")
-            output_filename = f"command{count}.log"
+            output_filename = path.join(DATA_DIR, f"command{count}.log")
             open_mode = "w"
             if ">>" in command:  # append to file
                 open_mode = "a"
@@ -653,11 +663,18 @@ MANAGER: typing.Union[VehicleManager, None] = None
 def handle_vehicles(login: bool) -> bool:
     """handle vehicles"""
     global MANAGER, MONITOR_SOMETHING_WRITTEN_OR_ERROR  # pylint:disable=global-statement  # noqa
-    retries = 15  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
+    # TODO #84: retry only on communication problems towards vehicle, not for client-side handling of data
+    # as such causes exceeding of api requests limit
+    # (besides typically not being transient and problems does not dis-appear without user intervention)
+    #retries = 14  # retry for maximum of 15 minutes (15 x 60 seconds sleep)
+    retries = 2  # workaround: disable retries until improved error handling is implemented
     while retries > 0:
+        logging.info(f"check vehicles (login={login}, retries={retries})")
         error_string = ""
         try:
             if login:
+                if MANAGER:
+                    disable_trace_requests(MANAGER)
                 logging.info("Login using VehicleManager")
                 # get information and add to comma separated file
                 MANAGER = VehicleManager(
@@ -672,6 +689,8 @@ def handle_vehicles(login: bool) -> bool:
                     geocode_api_key=GOOGLE_API_KEY,
                     language=LANGUAGE,
                 )
+                if MANAGER and MONITOR_TRACE_REQUESTS:
+                    enable_trace_requests(MANAGER)
 
             if MANAGER:
                 if MANAGER.check_and_refresh_token():
@@ -731,6 +750,62 @@ def handle_vehicles(login: bool) -> bool:
             (retries, error_string) = handle_exception(ex, retries, True)
 
     return error
+
+
+class RequestFormatter(logging.Formatter):
+    def _formatHeaders(self, d):
+        return '\n'.join(f'{k}: {v}' for k, v in d.items())
+
+    def formatMessage(self, record):
+        result = super().formatMessage(record)
+        if record.name == 'requests_logger':
+            result += (textwrap.dedent('''
+                \t{req.method} {req.url}: {res.status_code} {res.reason}''')
+                .format(req=record.req, res=record.res,))
+            if record.req.body and not(record.req.body.isspace()):
+                result += (textwrap.dedent('''
+                    \tdata: {req.body}''')
+                    .format(req=record.req,))
+            if record.res.text and not(record.res.text.isspace()):
+                result += (textwrap.dedent('''
+                    \tresponse: {res.text}''').format(res=record.res,))
+            result += '\n-----'
+
+        return result
+
+
+REQUESTS_LOGGER : logging.Logger = None
+def log_request(response, *args, **kwargs):
+    global REQUESTS_LOGGER
+    extra = {'req': response.request, 'res': response}
+    REQUESTS_LOGGER.debug('hyundai_kia_connect_api request', extra=extra)
+
+def enable_trace_requests(monitor: VehicleManager):
+    global REQUESTS_LOGGER
+    logging.info('enabling api requests logging')
+    if not REQUESTS_LOGGER:
+        REQUESTS_LOGGER = logging.getLogger('requests_logger')
+        REQUESTS_LOGGER.setLevel(logging.DEBUG)
+        REQUESTS_LOGGER.propagate = False
+        handler = logging.FileHandler(
+            path.join(DATA_DIR, 'requests-' + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + '.log'),
+            mode='a')
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(RequestFormatter('{asctime} {levelname} {name} {message}', style='{'))
+        REQUESTS_LOGGER.addHandler(handler)
+    session : requests.Session = monitor.api.session
+    session.hooks['response'].append(log_request)
+
+def disable_trace_requests(monitor: VehicleManager):
+    global REQUESTS_LOGGER
+    logging.info('disabling api requests logging')
+    if REQUESTS_LOGGER:
+        session : requests.Session = monitor.api.session
+        session.hooks['response'].remove(log_request)
+        for hdl in REQUESTS_LOGGER.handlers:
+            REQUESTS_LOGGER.removeHandler(hdl)
+            hdl.close()
+        REQUESTS_LOGGER = None
 
 
 def monitor():
